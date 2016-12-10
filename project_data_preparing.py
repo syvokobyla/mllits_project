@@ -48,12 +48,12 @@ def get_samples(filename, window_len, sample_rate=None, overlap=512):
     overlap_right = overlap - overlap_left
     assert overlap_left + overlap_right == overlap
 
-    for n in range(overlap_left, len(left), window_len-overlap):
-        sample = left[n-overlap_left:n-overlap_left+window_len]
-        window = np.hanning(window_len)
+    for n in range(0, len(left), overlap):
+        sample = left[n:n+window_len]
+        #window = np.hanning(window_len)
         if len(sample) != window_len:
             continue
-        freqs = np.fft.rfft(sample * window)
+        freqs = np.fft.rfft(sample)# * window)
         if n < 1000 * window_len and n > 800 * window_len: # TODO: remove this and take all samples
             samples.append(freqs)
 

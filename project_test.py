@@ -3,6 +3,8 @@ import pickle
 from scipy.fftpack import fft
 from scipy.io import wavfile
 from sklearn import svm
+import subprocess
+import matplotlib.pyplot as plt
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
@@ -67,24 +69,34 @@ def get_wav_from_samples(samples):
     window_len = 2048
     overlap = 512
     overlap_left = overlap // 2
-    channel = [] #np.empty(window_len * len(samples))
+    norm = window_len // overlap
+    channel = np.zeros(len(samples) * overlap + window_len - overlap) #np.empty(window_len * len(samples))
     #print(samples[0].dtype)
     k = True
-    for freqs in samples:
+    for i, freqs in enumerate(samples):
         waveform = np.fft.irfft(freqs)
-        waveform = waveform[overlap_left:window_len-overlap_left]
+        pos = i * overlap
+        o = overlap // 2
+        channel[pos+o:pos+window_len-o] += (waveform / norm)[o:-o]
+        #waveform = waveform[overlap_left:window_len-overlap_left]
         if k:
             print(len(waveform))
-        channel.append(waveform)
-    return np.concatenate(channel).astype(np.int16)
+        # channel.append(waveform)
+    return channel.astype(np.int16)
 
 X_test = load_test_data()
 # Y = test_model(X_test)
-#mask = pickle.load(open('/home/maori/Documents/mllits/Project/test_mask.pickle', 'rb'))
+mask = pickle.load(open('/home/maori/Documents/mllits/Project/test_mask.pickle', 'rb'))
+print(mask[:20])
+print(mask[0])
+print(len(mask[0]))
+plt.imshow(mask)
+plt.show()
 #mask = np.array(mask[:3660]) #TODO: The last array in list does have inconsistent length.
-#Y = get_freqs_by_mask(X_test, mask)
+Y = get_freqs_by_mask(X_test, mask)
 #Y = test_mask_model(X_test)
-wav_data = get_wav_from_samples(X_test)
-# wav_data = get_wav_from_samples(Y)
+#wav_data = get_wav_from_samples(X_test)
+wav_data = get_wav_from_samples(Y)
 # print(wav_data)
 wavfile.write("result_1.wav", 44100, wav_data) #TODO: remove hardcoded rate
+subprocess.call(["xdg-open", "result_1.wav"])
