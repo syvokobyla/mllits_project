@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import librosa
 import mir_eval.separation
+import glob
 
 def build_model():
     model = Sequential([
@@ -54,9 +55,9 @@ def predict(model, mix_freqs):
 def evaluate():
     #source_vocal = librosa.core.istft(np.load("vocal.stft.npy").transpose()) #wRONG!!!!!!!!
     predicted_vocal = np.load("predicted.npy")
-    predicted_instrument =
-    vocal =
-    instrument =
+    predicted_instrument = 0
+    vocal = 0
+    instrument = 0
     #mix = librosa.core.istft(np.load("mix.stft.npy").transpose())
 
 
@@ -83,24 +84,52 @@ def _any_source_silent(sources):
 
 
 model = build_model()
-model = fit(model)
+#model = fit(model)
+#model.save_weights("model_weights.keras")
+model.load_weights("model_weights.keras")
 
-mix_freqs = np.load("test_mix.stft.npy")
-predicted_vocal_freqs = predict(model, mix_freqs)
+test_mix_freqs = np.load("test_mix.stft.npy")
+predicted_vocal_freqs = predict(model, test_mix_freqs)
+
+np.save("predicted_vocal_freqs.stft", predicted_vocal_freqs)
+
+#predicted_vocal_freqs = np.load("predicted_vocal_freqs.stft.npy")
 
 predicted_vocal_samples = librosa.core.istft(predicted_vocal_freqs.transpose())
 rate = 16384
 librosa.output.write_wav("predicted.wav", predicted_vocal_samples, sr=rate)
 
-predicted_instrument_samples =
 
-source_vocal =
-source_instrument =
+test_audio_path = 'MedleyDB_sample/Test_Audio'
+test_vocal_paths = glob.glob(test_audio_path +'/*/vocal.wav')
+test_mix_paths = glob.glob(test_audio_path +'/*/mix.wav')
+test_instrument_paths = glob.glob(test_audio_path +'/*/instrument.wav')
 
+
+target_rate = 16384
+predicted_instrument_freqs = np.array([x - y for x, y in zip(test_mix_freqs, predicted_vocal_freqs)])
+predicted_instrument_samples = librosa.core.istft(predicted_instrument_freqs.transpose())
+librosa.output.write_wav("predicted_instrument.wav", predicted_instrument_samples, sr=rate)
+
+source_vocal_samples, rate = librosa.load(test_vocal_paths[0], sr=target_rate)
+source_instrument_samples, rate = librosa.load(test_instrument_paths[0], sr=target_rate)
+
+source_vocal_samples = source_vocal_samples[:len(predicted_vocal_samples)]
+source_instrument_samples = source_instrument_samples[:len(predicted_instrument_samples)]
+print()
+print("aaaaaaa", len(source_vocal_samples), len(predicted_vocal_samples))
+print("qqqqqqq", len(source_instrument_samples), len(predicted_instrument_samples))
+
+
+jhkjhkljhlj
 sdr, sir, sar, perm = mir_eval.separation.bss_eval_sources(
-                    [vocal, instrument],
-                    [predicted_vocal_samples, predicted_instrument_samples]
+                    np.array([source_vocal_samples, source_instrument_samples]),
+                    np.array([predicted_vocal_samples, predicted_instrument_samples])
                     )
+
+print(sdr, sir, sar, perm)
+
+#[-0.2654403   6.88886757] [ 3.54161415  7.86293823] [  3.6627943   14.51667091] [0 1]
 
 
 #model.load_weights("model_weights.keras")
