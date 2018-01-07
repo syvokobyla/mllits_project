@@ -93,12 +93,10 @@ def get_track_paths(audio_folder):
     vocal_paths, instruments_paths : vocal and instruments files \
                             from all track folders in audio_folder.
     """
-    res_filenames = []
     for filename in glob.glob(audio_folder + '/*/*.yaml'):
         print(filename)
         metadata = yaml.load(open(filename))
         mix_filename = metadata["mix_filename"]
-        print()
         vocal_filenames = [
                 x['filename'] for x in metadata['stems'].values()
                 if 'singer' in x['instrument'] or 'vocalists' in x['instrument']]
@@ -114,7 +112,6 @@ def get_track_paths(audio_folder):
             instruments_paths += glob.glob(audio_folder +'/*/*/' + f)
 
         if vocal_paths and instruments_paths:
-            result = vocal_paths, instruments_paths
             yield vocal_paths, instruments_paths
 
 
@@ -149,13 +146,16 @@ def make_vocal_instrum_mix_files(track_path):
         return
     print(track_path)
     vocal_paths, instrum_paths = track_path
-    vocal_concat_path = os.path.join(os.path.dirname(vocal_paths[0]), \
-                                                 "..", "..", vocal.wav")
+    vocal_concat_path = os.path.join(
+        os.path.dirname(vocal_paths[0]),
+        "..", "..", "vocal.wav")
     glue_wav_files(vocal_paths, vocal_concat_path)
-    instrum_concat_path = os.path.join(os.path.dirname(instrum_paths[0]), \
-                                               "..", "..", "instrument.wav")
+    instrum_concat_path = os.path.join(
+        os.path.dirname(instrum_paths[0]),
+        "..", "..", "instrument.wav")
     glue_wav_files(instrum_paths, instrum_concat_path)
-    mix_concat_path = os.path.join(os.path.dirname(vocal_concat_path), "..", "mix.wav")
+    mix_concat_path = os.path.join(
+        os.path.dirname(vocal_concat_path), "..", "mix.wav")
     glue_wav_files([vocal_concat_path, instrum_concat_path], mix_concat_path)
 
         
