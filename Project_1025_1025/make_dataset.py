@@ -1,55 +1,70 @@
-import librosa
-import numpy as np
-import sox
-from shutil import copyfile
+#!/usr/bin/env python
 import glob
+import os
+from shutil import copyfile
+import argparse
+
+import librosa
+import sox
+import yaml
+import numpy as np
+
 
 def prepare_freq_file(paths, freq_file_path):
-        target_rate = 16384
-        print("Resample files")
-        files_freqs = []
-        for f in paths:
-            sample, rate = librosa.load(f, sr=target_rate)
-            print("STFT")
-            freqs = np.stack(librosa.core.stft(sample), axis=1) # (..., 1025)
+    """Extract frequencies from audio files
+    using STFT (short time Fourier transformation).
+    Save resulting frequencies to the file.
+    
+    Parameters
+    ----------
+    paths : list
+        The list of audio files paths.
+    freq_file_path : string
+        Path of the file for saving frequencies gotten by stft.
 
-            if files_freqs != []:
-                files_freqs = np.concatenate((files_freqs, freqs), axis = 0)
-            else:
-                files_freqs = freqs
-
-        np.save(freq_file_path, files_freqs)
+    """
+    target_rate = 16384
+    print("Resample files")
+    files_freqs = []
+    for f in paths:
+        sample, rate = librosa.load(f, sr=target_rate)
+        print("STFT")
+        freqs = np.stack(librosa.core.stft(sample), axis=1) # (..., 1025)
+        if not files_freqs:
+            files_freqs = np.concatenate((files_freqs, freqs), axis = 0)
+        else:
+            files_freqs = freqs
+    np.save(freq_file_path, files_freqs)
+    
 
 def collect_samples(x_file_name, y_file_name):
-    """Save X and Y samples to files. """
-
-    #window_size = 2048
-    #examples_wanted = 1000
-    #examples_wanted_vocals = examples_wanted // 2
-    #examples_wanted_non_vocal = examples_wanted - examples_wanted_vocals
-
+    """Makes X and Y samples and saves them to X.npy and Y.npy. 
+    
+    Parameters
+    ----------
+    x_file_name : string
+        Stft data file path of mix audio. 
+    y_file_name : string
+        Stft data file path of vocal audio.
+    """
     print("Load resampled stft files")
-    x = np.load(x_file_name) #'mix.stft.npy')
-    y = np.load(y_file_name) #'vocal.stft.npy')
-    assert len(x) == len(y), "mix,vocal and instrument lengths don't match"
-
+    x = np.load(x_file_name)
+    y = np.load(y_file_name)
+    assert len(x) == len(y), "Mix,Vocal and Instrument lengths don't match"
 
     print("Pick samples")
     collected_samples = 0
     rng = np.random.RandomState(0)
     X = []
     Y = []
-    examples_wanted = 1000 #len(x)
+    examples_wanted = len(x) #1000
     while collected_samples < examples_wanted:
         pos = rng.randint(len(x))
-        #sample_x = x[:,pos]
         sample_x = x[pos]
-        #sample_y = y[:,pos]
         sample_y = y[pos]
         Y.append(sample_y)
         X.append(sample_x)
         collected_samples += 1
-
     print("Collected {} frequency frames".format(collected_samples))
 
     # Throw away phase, only keep magnitude
@@ -64,25 +79,23 @@ def collect_samples(x_file_name, y_file_name):
     print("X.shape = {}".format(X.shape))
     print("Y.shape = {}".format(Y.shape))
 
-def get_dataset_paths(audio_folder):
-    import glob, os, yaml
-    #audio_folder = 'MedleyDB_sample/Audio'
-    for filename in glob.glob(audio_folder + '/*/*.yaml'):
-        metadata = yaml.load(open(filename))
-        mix_filename = metadata["mix_filename"]
-        vocal_filenames = [
-                x['filename'] for x in metadata['stems'].values()
-                if 'singer' in x['instrument']]
-        if vocal_filenames:
-            vocal_path = glob.glob(audio_folder +'/*/*/' + vocal_filenames[0])
-            mix_path = glob.glob(audio_folder +'/*/' + mix_filename)
-            yield vocal_path[0], mix_path[0]
-
+    
 def get_track_paths(audio_folder):
-    import glob, os, yaml
-    #audio_folder = 'MedleyDB_sample/Audio'
+    """ Get paths to vocal and instruments files of tracks.
+    
+    Parameters
+    ----------
+    audio_folder : string
+        Path to audio tracks folder (MedleyDB/Audio)
+    
+    Yields
+    -------
+    vocal_paths, instruments_paths : vocal and instruments files \
+                            from all track folders in audio_folder.
+    """
     res_filenames = []
     for filename in glob.glob(audio_folder + '/*/*.yaml'):
+        print(filename)
         metadata = yaml.load(open(filename))
         mix_filename = metadata["mix_filename"]
         print()
@@ -100,60 +113,76 @@ def get_track_paths(audio_folder):
         for f in instruments_filenames:
             instruments_paths += glob.glob(audio_folder +'/*/*/' + f)
 
-        result = ()
-        if vocal_paths == [] or instruments_paths == []:
-            result = [], []
-        else:
+        if vocal_paths and instruments_paths:
             result = vocal_paths, instruments_paths
+            yield vocal_paths, instruments_paths
 
-        res_filenames.append(result)
 
-    return res_filenames
-
-def mix_wav_files(paths, mix_wav_path):
+def glue_wav_files(paths, glue_wav_path):
+    """Glue wav audio files (from paths) to one audio file(glue_wav_path).
+    
+    Parameters
+    ----------
+    paths : list
+        List of audio filenames
+    glue_wav_paths: string
+        Filename of resulting wav file.
+    """
     if not paths:
-        return ''
+        return
     if len(paths) == 1:
-        copyfile(paths[0], mix_wav_path)
+        copyfile(paths[0], glue_wav_path)
     else:
         combiner = sox.Combiner()
-        combiner.build(paths, mix_wav_path, combine_type = 'mix-power')
+        combiner.build(paths, glue_wav_path, combine_type = 'mix-power')
+        
+        
+def make_vocal_instrum_mix_files(track_path):
+    """Make vocal, instruments, mix wav files in track path.
+    
+    Parameters
+    ----------
+    track_path : string
+        Path to track files. 
+    """
+    if track_path == ([], []):
+        return
+    print(track_path)
+    vocal_paths, instrum_paths = track_path
+    vocal_concat_path = os.path.join(os.path.dirname(vocal_paths[0]), \
+                                                 "..", "..", vocal.wav")
+    glue_wav_files(vocal_paths, vocal_concat_path)
+    instrum_concat_path = os.path.join(os.path.dirname(instrum_paths[0]), \
+                                               "..", "..", "instrument.wav")
+    glue_wav_files(instrum_paths, instrum_concat_path)
+    mix_concat_path = os.path.join(os.path.dirname(vocal_concat_path), "..", "mix.wav")
+    glue_wav_files([vocal_concat_path, instrum_concat_path], mix_concat_path)
 
+        
+        
 if __name__ == '__main__':
-    audio_path = 'MedleyDB/Audio'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train-audio-path', 
+                        default='../MedleyDB_sample/Train_Audio',
+                        help="Path to train audio path, default is %(default)s"
+                        )
+    parser.add_argument('--valid-audio-path', 
+                        default='../MedleyDB_sample/Valid_Audio',
+                        help="Path to validation audio path, default is %(default)s"
+                        )
+    args = parser.parse_args()
+    
+    paths = {'train':args.train_audio_path, 'valid':args.valid_audio_path}
+    # Create vocal, instruments and mix wav files.
+    for path in paths.values():
+        for track_path in get_track_paths(path):
+            make_vocal_instrum_mix_files(track_path)
 
-    #track_paths = get_track_paths(audio_path)
-    for track_path in []:#track_paths:
-        if track_path != ([], []):
-            vocal_paths, instrument_paths = track_path
-
-            vocal_concat_path = '/'.join(vocal_paths[0].split("/")[:-2]) + "/vocal.wav"
-            mix_wav_files(vocal_paths, vocal_concat_path)
-
-            instrument_concat_path = '/'.join(instrument_paths[0].split("/")[:-2]) + "/instrument.wav"
-            mix_wav_files(instrument_paths, instrument_concat_path)
-
-            mix_concat_path = '/'.join(vocal_concat_path.split("/")[:-1]) + "/mix.wav"
-            mix_wav_files([vocal_concat_path, instrument_concat_path], mix_concat_path)
-
-
-    if False:
-        train_audio_path = 'MedleyDB_sample/Train_Audio'
-        train_vocal_paths = glob.glob(train_audio_path +'/*/vocal.wav')
-        train_mix_paths = glob.glob(train_audio_path +'/*/mix.wav')
-        prepare_freq_file(train_vocal_paths, "train_vocal.stft")
-        prepare_freq_file(train_mix_paths, "train_mix.stft")
-        collect_samples('train_mix.stft.npy', 'train_vocal.stft.npy')
-
-    #TODO: prepare test vocal and mix freqs files
-    test_audio_path = 'MedleyDB_sample/Test_Audio'
-    test_vocal_paths = glob.glob(test_audio_path +'/*/vocal.wav')
-    test_mix_paths = glob.glob(test_audio_path +'/*/mix.wav')
-    test_instrument_paths = glob.glob(test_audio_path +'/*/instrument.wav')
-
-    prepare_freq_file(test_vocal_paths, "test_vocal.stft")
-    prepare_freq_file(test_mix_paths, "test_mix.stft")
-
-
-
-    #prepare_audio_files(get_dataset_paths('MedleyDB_sample/Test_Audio'))
+    #Prepare train and valid vocal and mix freqs files
+    for prefix, audio_path in paths.items():
+        vocal_paths = glob.glob(os.path.join(audio_path, '*', 'vocal.wav'))
+        mix_paths = glob.glob(os.path.join(audio_path, '*', 'mix.wav'))
+        instrument_paths = glob.glob(os.path.join(audio_path, '*', 'instrument.wav'))
+        prepare_freq_file(vocal_paths, prefix + "_vocal.stft")
+        prepare_freq_file(mix_paths, prefix + "_mix.stft")
+    

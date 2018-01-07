@@ -1,1 +1,10 @@
 pysox
+scipy
+sklearn
+numpy
+sox
+yaml
+libsox
+keras
+
+
